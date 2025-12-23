@@ -1,0 +1,11 @@
+{
+    "python.analysis.diagnosticMode": "openFilesOnly",
+    "python.analysis.ignore": [
+        "tools/*"
+    ],
+    "python.linting.pylintEnabled": false,
+    "python.analysis.typeCheckingMode": "off",
+    "files.associations": {
+        "*.ini": "ini"
+    }
+}

@@ -1,0 +1,11 @@
+{
+    "magic": "0xDEADBEEF",
+    "version": "1.0.0",
+    "size": 16748,
+    "crc32": "0x19D403E4",
+    "sha256": "f2af448753477d2adbd4a7bc4becb513e3fc27a7fe601d135f090d980012ca0c",
+    "timestamp": 1766493266,
+    "timestamp_human": "Tue Dec 23 13:34:26 2025",
+    "signature_type": "double-sha256 (demo)",
+    "total_size": 49568
+}
