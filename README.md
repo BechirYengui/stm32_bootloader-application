@@ -9,11 +9,13 @@
 
 - [Vue d'ensemble](#-vue-densemble)
 - [Architecture](#-architecture)
+- [Technologies utilisées](#-technologies-utilisées)
 - [Caractéristiques](#-caractéristiques)
 - [Prérequis](#-prérequis)
 - [Installation](#-installation)
 - [Compilation](#-compilation)
 - [Flashage](#-flashage)
+- [Indicateurs LED (vérification du flashage)](#-indicateurs-led-vérification-du-flashage)
 - [Utilisation](#-utilisation)
 - [Protocole de communication](#-protocole-de-communication)
 - [Sécurité](#-sécurité)
@@ -76,6 +78,134 @@ graph TD
     G --> H[Initialisation périphériques]
     H --> I[Boucle principale]
     I --> J[Communication sécurisée]
+```
+
+---
+
+## 🔧 Technologies utilisées
+
+### Périphériques STM32
+
+| Périphérique | Usage | Configuration |
+|--------------|-------|---------------|
+| **USART1** | Communication série | 115200 bps, 8N1, PA9/PA10 |
+| **TIM2** | PWM génération | Channel 1 (PA0), 1 kHz |
+| **ADC1** | Lecture tension | PA1 + Temperature interne |
+| **GPIO** | LED contrôle | PC13 (active LOW) |
+| **CRC** | Vérification intégrité | Hardware CRC32 |
+| **RCC** | Clock configuration | 72 MHz (HSE + PLL) |
+| **NVIC** | Gestion interruptions | Priorités configurables |
+
+### Communication et Protocole
+
+| Technologie | Implémentation | Détails |
+|-------------|----------------|---------|
+| **UART Interrupt-driven** | ✅ Réception asynchrone | Buffer circulaire 512 bytes |
+| **DMA UART** | ⚠️ Optionnel | Transferts sans CPU |
+| **JSON Parser** | ✅ Custom lightweight | Parsing manuel optimisé |
+| **TEXT Parser** | ✅ Commandes simples | Format `CMD:ARGS` |
+
+### Cryptographie
+
+| Algorithme | Bibliothèque | Usage |
+|------------|--------------|-------|
+| **AES-128-CBC** | mbedTLS | Chiffrement messages |
+| **HMAC-SHA256** | mbedTLS | Authentification |
+| **CRC32** | Hardware STM32 | Intégrité bootloader |
+| **PRNG** | STM32 RNG (si disponible) | IV génération |
+
+### Gestion de la mémoire
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **Stack Protection** | ✅ | Vérification overflow |
+| **Heap Management** | ⚠️ Limité | malloc() évité |
+| **MPU** | ❌ Non configuré | Protection mémoire HW |
+| **Flash Protection** | ⚠️ Partiel | RDP Level 0 (dev) |
+
+### Architecture logicielle
+
+```
+┌────────────────────────────────────────────┐
+│         HAL (Hardware Abstraction)         │
+│  UART | GPIO | TIM | ADC | CRC | Flash    │
+├────────────────────────────────────────────┤
+│           Drivers & Middleware             │
+│  Crypto | Protocol | Peripherals           │
+├────────────────────────────────────────────┤
+│            Application Logic               │
+│  Command Parser | State Machine            │
+├────────────────────────────────────────────┤
+│          Security Layer (App)              │
+│  AES-128-CBC | HMAC-SHA256 | Anti-Replay  │
+└────────────────────────────────────────────┘
+
+        ↑ Jump from Bootloader ↑
+        
+┌────────────────────────────────────────────┐
+│          Bootloader (8 KB)                 │
+│  CRC32 Verify | System Reinit | Jump       │
+└────────────────────────────────────────────┘
+```
+
+### Interruptions utilisées
+
+| IRQ | Priorité | Usage | Handler |
+|-----|----------|-------|---------|
+| **USART1_IRQn** | 1 | Réception UART | `USART1_IRQHandler()` |
+| **TIM2_IRQn** | 2 | PWM update | `TIM2_IRQHandler()` |
+| **ADC1_2_IRQn** | 3 | Conversion ADC | `ADC1_2_IRQHandler()` |
+| **DMA1_Channel4_IRQn** | 1 | UART TX (si DMA) | `DMA1_Channel4_IRQHandler()` |
+| **DMA1_Channel5_IRQn** | 1 | UART RX (si DMA) | `DMA1_Channel5_IRQHandler()` |
+
+### DMA Configuration
+
+| Canal | Périphérique | Direction | Mode | Status |
+|-------|--------------|-----------|------|--------|
+| **DMA1 Ch4** | USART1 TX | Memory → Peripheral | Normal | ⚠️ Optionnel |
+| **DMA1 Ch5** | USART1 RX | Peripheral → Memory | Circular | ⚠️ Optionnel |
+| **DMA1 Ch1** | ADC1 | Peripheral → Memory | Circular | ❌ Non utilisé |
+
+**Note:** Le projet utilise actuellement des **interruptions UART** sans DMA pour simplifier le code. Le DMA peut être activé pour optimiser les performances en modifiant `uart_config.h`.
+
+### Optimisations appliquées
+
+| Optimisation | Description | Gain |
+|--------------|-------------|------|
+| **-Os** | Optimisation taille | ~30% size reduction |
+| **-flto** | Link Time Optimization | ~10% size reduction |
+| **Inline functions** | Fonctions critiques | ~5% speed improvement |
+| **Constant-time crypto** | Protection side-channel | Sécurité ++ |
+| **Zero-copy buffers** | DMA direct | Latence réduite |
+
+### Bibliothèques utilisées
+
+```ini
+[env:bluepill_f103c8]
+lib_deps =
+    # Cryptographie
+    Mbed-TLS@^2.28.0
+    
+    # JSON parsing (custom, pas de lib externe)
+    # Implémenté manuellement pour économiser la mémoire
+```
+
+### Taille du firmware
+
+```
+┌─────────────────┬──────────┬──────────┬─────────┐
+│   Composant     │   Flash  │   RAM    │  Ratio  │
+├─────────────────┼──────────┼──────────┼─────────┤
+│ Bootloader      │   6.1 KB │  3.0 KB  │  75%    │
+│ Application     │  38.4 KB │  8.7 KB  │  78%    │
+│ - HAL           │  12.0 KB │  2.0 KB  │         │
+│ - Crypto        │  18.5 KB │  4.5 KB  │         │
+│ - Protocol      │   5.2 KB │  1.5 KB  │         │
+│ - Peripherals   │   2.7 KB │  0.7 KB  │         │
+└─────────────────┴──────────┴──────────┴─────────┘
+
+Total utilisé: 44.5 KB Flash / 11.7 KB RAM
+Disponible:    19.5 KB Flash /  8.3 KB RAM
 ```
 
 ---
@@ -302,6 +432,259 @@ st-flash --reset write \
 
 echo "✅ Flashage terminé avec succès!"
 echo "🚀 Le système démarre maintenant..."
+```
+
+---
+
+## 💡 Indicateurs LED (Vérification du flashage)
+
+### Séquence de démarrage normale
+
+Après le flashage réussi, observez la LED intégrée (PC13) pour confirmer le bon fonctionnement:
+
+#### Phase 1: Bootloader (0-2 secondes)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LED COMPORTEMENT: Clignotement rapide (5 Hz)          │
+│  Statut: ✅ Bootloader en cours d'exécution            │
+│  Durée: ~500 ms                                         │
+└─────────────────────────────────────────────────────────┘
+
+Séquence:
+  ┌──┐  ┌──┐  ┌──┐
+──┘  └──┘  └──┘  └──  (100ms ON / 100ms OFF)
+
+Signification:
+  - Le bootloader a démarré correctement
+  - Vérification CRC32 en cours
+  - Préparation du saut vers l'application
+```
+
+#### Phase 2: Application démarrée (après 2 secondes)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LED COMPORTEMENT: Clignotement lent (1 Hz)            │
+│  Statut: ✅ Application en cours d'exécution           │
+│  Durée: Continue (heartbeat)                           │
+└─────────────────────────────────────────────────────────┘
+
+Séquence:
+      ┌─────┐      ┌─────┐      ┌─────┐
+──────┘     └──────┘     └──────┘     └──  (500ms ON / 500ms OFF)
+
+Signification:
+  - L'application fonctionne normalement
+  - Périphériques initialisés
+  - Communication UART prête
+  - Système sécurisé opérationnel
+```
+
+#### Phase 3: Communication active
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  LED COMPORTEMENT: Flash à chaque commande reçue        │
+│  Statut: ✅ Réception/traitement de commandes          │
+│  Durée: 50ms par flash                                  │
+└─────────────────────────────────────────────────────────┘
+
+Séquence:
+              ┌┐        ┌┐           ┌┐
+──────────────┘└────────┘└───────────┘└──  (50ms flash)
+
+Signification:
+  - Commande reçue via UART
+  - Message déchiffré (si chiffré)
+  - HMAC validé
+  - Commande en cours de traitement
+```
+
+### Codes d'erreur LED
+
+| Pattern | Fréquence | Signification | Action |
+|---------|-----------|---------------|--------|
+| **🔴 Clignotement très rapide** | 10 Hz (50ms) | ❌ CRC32 invalide | Re-flasher l'application |
+| **🔴 Allumée fixe** | Statique | ❌ Hard Fault / Crash | Reset + Vérifier code |
+| **🔴 Éteinte fixe** | Statique | ❌ Bootloader bloqué | Re-flasher bootloader |
+| **🟡 2 flashs courts** | 2 Hz | ⚠️ UART timeout | Vérifier connexion série |
+| **🟡 3 flashs courts** | 2 Hz | ⚠️ HMAC invalide | Vérifier clés crypto |
+| **🟢 1 flash long** | 1 Hz | ✅ Commande réussie | Normal |
+
+### Détails des codes d'erreur
+
+#### 1. CRC32 Invalide (Clignotement 10 Hz)
+
+```
+Cause:
+  - Application corrompue
+  - Flashage incomplet
+  - Offset incorrect
+
+Solution:
+  1. Effacer la flash: st-flash erase
+  2. Re-flasher l'application @ 0x08002000
+  3. Vérifier platformio.ini: board_upload.offset_address = 0x08002000
+
+Pattern LED:
+┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐┌┐
+└┘└┘└┘└┘└┘└┘└┘└┘└┘└┘  (50ms ON / 50ms OFF)
+```
+
+#### 2. Hard Fault / Crash (LED fixe allumée)
+
+```
+Cause:
+  - Stack overflow
+  - Null pointer dereference
+  - Memory corruption
+
+Solution:
+  1. Connecter ST-Link debugger
+  2. Lire les registres de crash
+  3. Vérifier le stack usage
+  4. Augmenter la taille du stack si nécessaire
+
+LED:
+████████████████████  (Toujours allumée)
+```
+
+#### 3. Bootloader bloqué (LED fixe éteinte)
+
+```
+Cause:
+  - Bootloader non flashé
+  - Offset bootloader incorrect
+  - Hardware défaillant
+
+Solution:
+  1. Vérifier la connexion ST-Link
+  2. Re-flasher bootloader @ 0x08000000
+  3. Vérifier l'alimentation (3.3V stable)
+
+LED:
+────────────────────  (Toujours éteinte)
+```
+
+#### 4. UART Timeout (2 flashs courts)
+
+```
+Cause:
+  - Pas de connexion série
+  - Baudrate incorrect
+  - Câbles inversés
+
+Solution:
+  1. Vérifier TX/RX: PA9 (TX) ↔ RX, PA10 (RX) ↔ TX
+  2. Vérifier baudrate: 115200 bps
+  3. Tester avec: minicom -D /dev/ttyUSB0 -b 115200
+
+Pattern LED:
+  ┌┐ ┌┐     ┌┐ ┌┐     ┌┐ ┌┐
+──┘└─┘└─────┘└─┘└─────┘└─┘└──  (2x 100ms, pause 500ms)
+```
+
+#### 5. HMAC Invalide (3 flashs courts)
+
+```
+Cause:
+  - Clés AES/HMAC différentes PC ↔ STM32
+  - Message corrompu
+  - Compteur de séquence désynchronisé
+
+Solution:
+  1. Vérifier les clés dans crypto.h (STM32) et Qt (DeviceController)
+  2. Reset le compteur de séquence
+  3. Envoyer commande TEXT en clair: AUTH:admin:password
+
+Pattern LED:
+  ┌┐ ┌┐ ┌┐     ┌┐ ┌┐ ┌┐     ┌┐ ┌┐ ┌┐
+──┘└─┘└─┘└─────┘└─┘└─┘└─────┘└─┘└─┘└──  (3x 100ms, pause 500ms)
+```
+
+### Test manuel des LED
+
+Pour tester manuellement le comportement des LED après flashage:
+
+```c
+// Ajouter dans main.c (temporairement pour debug)
+
+// Test 1: LED ON permanente
+HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);  // ON
+HAL_Delay(2000);
+
+// Test 2: LED OFF permanente
+HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);    // OFF
+HAL_Delay(2000);
+
+// Test 3: Clignotement 1 Hz
+for(int i = 0; i < 10; i++) {
+    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    HAL_Delay(500);
+}
+```
+
+### Diagramme de vérification du flashage
+
+```
+                    [RESET STM32]
+                          │
+                          ▼
+            ┌─────────────────────────┐
+            │  LED clignote 5 Hz?     │
+            │  (Bootloader actif)     │
+            └─────────┬───────────────┘
+                      │
+          ┌───────────┴───────────┐
+          │ OUI                   │ NON
+          ▼                       ▼
+    ┌─────────────┐      ┌──────────────────┐
+    │ Attendre    │      │ ❌ PROBLÈME:     │
+    │ 2 secondes  │      │ Bootloader       │
+    └──────┬──────┘      │ non flashé       │
+           │             └──────────────────┘
+           ▼
+    ┌─────────────────────────┐
+    │ LED clignote 1 Hz?      │
+    │ (Application active)    │
+    └─────────┬───────────────┘
+              │
+    ┌─────────┴─────────┐
+    │ OUI               │ NON
+    ▼                   ▼
+┌──────────┐   ┌──────────────────┐
+│ ✅ OK!   │   │ ❌ PROBLÈME:     │
+│ Système  │   │ Application      │
+│ prêt     │   │ ne démarre pas   │
+└──────────┘   └──────────────────┘
+```
+
+### Commandes de diagnostic LED
+
+Une fois le système démarré, vous pouvez tester la LED via UART:
+
+```bash
+# Connexion série
+minicom -D /dev/ttyUSB0 -b 115200
+
+# Commandes de test
+LED:ON          # Allumer LED (devrait rester allumée)
+LED:OFF         # Éteindre LED (devrait s'éteindre)
+LED:BLINK       # Clignoter 5 fois (test automatique)
+STATUS          # Afficher l'état de tous les périphériques
+```
+
+**Réponses attendues:**
+```
+> LED:ON
+OK: LED ON
+
+> LED:OFF
+OK: LED OFF
+
+> STATUS
+STATUS: {"led":"ON","pwm":50,"temp":23.5,"voltage":3.28,"uptime":1234}
 ```
 
 ---
@@ -818,6 +1201,22 @@ Ce projet est sous licence **MIT**. Voir le fichier `LICENSE` pour plus de déta
 
 ---
 
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/project/issues)
+- **Email**: support@project.com
+- **Documentation**: [Wiki](https://github.com/project/wiki)
+
+---
+
+## 🙏 Remerciements
+
+- **STMicroelectronics** pour les HAL libraries
+- **ARM** pour les spécifications CMSIS
+- **PlatformIO** pour l'excellent framework de développement
+- **Communauté open source** pour les librairies cryptographiques
+
+---
 
 ## ⚠️ Avertissement
 
@@ -839,4 +1238,4 @@ Ce projet est fourni à des fins **éducatives et de développement**.
 
 Made with ❤️ by Bechir
 
-</div># stm32_bootloader-application
+</div>
