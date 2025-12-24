@@ -1199,22 +1199,7 @@ Ce projet est sous licence **MIT**. Voir le fichier `LICENSE` pour plus de déta
 
 - **Bechir** - Développeur principal - [GitHub](https://github.com/bechir)
 
----
 
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/project/issues)
-- **Email**: support@project.com
-- **Documentation**: [Wiki](https://github.com/project/wiki)
-
----
-
-## 🙏 Remerciements
-
-- **STMicroelectronics** pour les HAL libraries
-- **ARM** pour les spécifications CMSIS
-- **PlatformIO** pour l'excellent framework de développement
-- **Communauté open source** pour les librairies cryptographiques
 
 ---
 
