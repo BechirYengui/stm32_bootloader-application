@@ -1,0 +1,12 @@
+# Dépendances Python pour les tests du bootloader
+
+# Framework de test
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-html>=3.2.0
+pytest-timeout>=2.1.0
+
+# Outils de qualité
+pylint>=2.17.0
+black>=23.7.0
+mypy>=1.4.0
