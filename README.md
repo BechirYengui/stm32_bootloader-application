@@ -285,24 +285,27 @@ stm32_secure_system/
 ├── stm32_secure_boot/          # Bootloader
 │   ├── src/
 │   │   ├── main.c
-│   │   ├── bootloader.c
-│   │   └── system_utils.c
+│   │  
 │   ├── include/
-│   │   ├── bootloader.h
-│   │   └── system_utils.h
+│   │   ├── crypto_ligh.h
+│    __ lib
+|   |   ├── crypto_ligh.h
+|   |   ├── crypto_ligh.c
+|   |___ test (unit , integration ...) 
 │   └── platformio.ini
 │
 └── stm32_secure_application/   # Application
     ├── src/
     │   ├── main.c
-    │   ├── crypto.c
-    │   ├── protocol.c
-    │   └── peripherals.c
-    ├── include/
-    │   ├── crypto.h
-    │   ├── protocol.h
-    │   └── peripherals.h
+    │   
+    │__ test(unit , integration ...) 
+    │   
+    ├── tools/
+    │   ├── post_build.py
+    │   ├── pre_build.py
+    │   └── firmware_signer.py
     └── platformio.ini
+    └── secure_boot_deploy.sh
 ```
 
 ---
